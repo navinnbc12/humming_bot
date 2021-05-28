@@ -176,8 +176,13 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
 
     async def start_network(self):
         self._order_book_tracker.start()
+        logging.info('done order_tracker')
         self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
+        logging.info('done2')
         self._funding_info_polling_task = safe_ensure_future(self._funding_info_polling_loop())
+        logging.info('done 3')
+        a = self._trading_required
+        logging.info('last %s'%a)
         if self._trading_required:
             self._status_polling_task = safe_ensure_future(self._status_polling_loop())
             self._user_stream_tracker_task = safe_ensure_future(self._user_stream_tracker.start())
@@ -259,7 +264,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
         self.start_tracking_order(order_id, "", trading_pair, trade_type, price, amount, order_type, self._leverage[trading_pair], position_action.name)
 
         try:
-            order_result = await self.request(path="/api/BinancePlaceOrder",
+            order_result = await self.request(path="/api/order",
                                               params=api_params,
                                               method=MethodType.POST,
                                               add_timestamp = True,
@@ -361,9 +366,12 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
             params = {
                 "symbol": trading_pair
             }
+            headers = {"secret": self._api_secret, "key": self._api_key,
+                       "Content-type": "application/json"}
             response = await self.request(
-                path="/api/cancelAllOpenOrders",
+                path="/api/allOpenOrders",
                 params=params,
+                headers=headers,
                 method=MethodType.DELETE,
                 add_timestamp=True,
                 is_signed=True
@@ -388,9 +396,12 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                 "origClientOrderId": client_order_id,
                 "symbol": convert_to_exchange_trading_pair(trading_pair)
             }
+            headers = {"secret": self._api_secret, "key": self._api_key,
+                       "Content-type": "application/json"}
             response = await self.request(
-                path="/api/CancelOrder",
+                path="/api/order",
                 params=params,
+                headers = headers,
                 method=MethodType.DELETE,
                 is_signed=True,
                 add_timestamp = True,
@@ -437,8 +448,12 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
         return quantized_amount
 
     def get_order_price_quantum(self, trading_pair: str, price: object):
+        ##TradingRule(trading_pair='BTC-USDT', min_order_size=0.001, max_order_size=1E+56, min_price_increment=0.01,
+        ## min_base_amount_increment=0.001), min_quote_amount_increment = 1E-56), min_notional_size = 0), min_order_value = 0),
+        ## max_price_significant_digits = 1E+56), supports_limit_orders = True), supports_market_orders = True)
         trading_rule: TradingRule = self._trading_rules[trading_pair]
         return trading_rule.min_price_increment
+        ##return 0.01
 
     def get_order_size_quantum(self, trading_pair: str, order_size: object):
         trading_rule: TradingRule = self._trading_rules[trading_pair]
@@ -627,6 +642,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
         order_books: dict = self._order_book_tracker.order_books
+        #logging.info('order_books%s'%order_books)
         if trading_pair not in order_books:
             raise ValueError(f"No order book exists for '{trading_pair}'.")
         return order_books[trading_pair]
@@ -638,6 +654,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
             exchange_info = await self.request(path="/api/exchangeInfo", method=MethodType.GET, is_signed=False)
             logging.info('inside trading_rules %s' %exchange_info)
             trading_rules_list = self._format_trading_rules(exchange_info)
+            logging.info('trading_rules_list %s' %trading_rules_list)
             self._trading_rules.clear()
             for trading_rule in trading_rules_list:
                 self._trading_rules[trading_rule.trading_pair] = trading_rule
@@ -656,6 +673,11 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                     min_order_size = Decimal(filt_dict.get("LOT_SIZE").get("minQty"))
                     step_size = Decimal(filt_dict.get("LOT_SIZE").get("stepSize"))
                     tick_size = Decimal(filt_dict.get("PRICE_FILTER").get("tickSize"))
+
+                    logging.info('1111 %s'%trading_pair)
+                    logging.info('1111 %s'%min_order_size)
+                    logging.info('1111 %s'%step_size)
+                    logging.info('1111 %s'%tick_size)
 
                     # TODO: EXCHANGEFOREST PERPETUALS DOES NOT HAVE A MIN NOTIONAL VALUE, NEED TO CREATE NEW DERIVATIVES INFRASTRUCTURE
                     # min_notional = 0
@@ -739,7 +761,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
 
 
     async def _update_balances(self):
-        logging.info('_update_balances')
+        logging.info('inside _update_balances')
         local_asset_names = set(self._account_balances.keys())
         remote_asset_names = set()
         account_info = await self.request(path="/api/account", is_signed=True, add_timestamp=True,)
@@ -787,6 +809,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                     del self._account_positions[trading_pair + position_side.name]
 
     async def _update_order_fills_from_trades(self):
+        logging.info('inside _update_order_fills_from_trades:')
         last_tick = int(self._last_poll_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         current_tick = int(self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         if current_tick > last_tick and len(self._in_flight_orders) > 0:
@@ -849,7 +872,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
         current_tick = int(self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         if current_tick > last_tick and len(self._in_flight_orders) > 0:
             tracked_orders = list(self._in_flight_orders.values())
-            tasks = [self.request(path="/api/BinancePlaceOrder",
+            tasks = [self.request(path="/api/order",
                                   params={
                                       "symbol": convert_to_exchange_trading_pair(order.trading_pair),
                                       "origClientOrderId": order.client_order_id
@@ -939,7 +962,8 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
             add_timestamp=True,
             is_signed=True
         )
-        if set_leverage["leverage"] == str(leverage):
+        logging.info('set_leverage %s' %set_leverage)
+        if set_leverage["leverage"] == leverage:
             self._leverage[trading_pair] = leverage
             self.logger().info(f"Leverage Successfully set to {leverage} for {trading_pair}.")
         else:
@@ -1026,20 +1050,20 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
             try:
                 # TODO: QUESTION --- SHOULD I ADD AN ASYNC TIMEOUT? (aync with timeout(API_CALL_TIMEOUT)
                 # async with aiohttp.ClientSession() as client:
-                logging.info("path: %s" %path)
+                #logging.info("path: %s" %path)
                 if add_timestamp:
                     print('inside.........')
                     params["timestamp"] = f"{int(time.time()) * 1000}"
                     params["recvWindow"] = f"{20000}"
                 query = urlencode(sorted(params.items()))
-                logging.info('params %s' %params)
+                #logging.info('params %s' %params)
                 if is_signed:
                     secret = bytes(self._api_secret.encode("utf-8"))
                     signature = hmac.new(secret, query.encode("utf-8"), hashlib.sha256).hexdigest()
                     query += f"&signature={signature}"
-                logging.info('query %s' %query)
+                #logging.info('query %s' %query)
                 url=self._base_url + path + "?" + query
-                logging.info('URL: %s' %url)
+                #logging.info('URL: %s' %url)
                 async with aiohttp.request(
                         method=method.value,
                         url=self._base_url + path + "?" + query,

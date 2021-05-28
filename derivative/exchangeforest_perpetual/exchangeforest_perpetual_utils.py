@@ -15,9 +15,8 @@ EXAMPLE_PAIR = "BTC-FC"
 
 DEFAULT_FEES = [0.02, 0.04]
 
-RE_4_LETTERS_QUOTE = re.compile(r"^(\w+)(FC|USDC|USDS|TUSD|BUSD|IDRT|BKRW|BIDR)$")
-#RE_4_LETTERS_QUOTE = re.compile(r"^(\w+)(USDT|USDC|USDS|TUSD|BUSD|IDRT|BKRW|BIDR)$")
-RE_3_LETTERS_QUOTE = re.compile(r"^(\w+)(BTC|ETH|BNB|DAI|XRP|PAX|TRX|NGN|RUB|TRY|EUR|ZAR|UAH|GBP|USD|BRL)$")
+RE_4_LETTERS_QUOTE = re.compile(r"^(\w+)(USDT|USDC|USDS|TUSD|BUSD|IDRT|BKRW|BIDR)$")
+RE_3_LETTERS_QUOTE = re.compile(r"^(\w+)(BTC|ETH|BNB|DAI|XRP|PAX|TRX|NGN|RUB|TRY|EUR|ZAR|UAH|GBP|USD|BRL|FC)$")
 
 
 # Helper Functions ---
@@ -27,6 +26,7 @@ def split_trading_pair(trading_pair: str) -> Optional[Tuple[str, str]]:
         if m is None:
             m = RE_3_LETTERS_QUOTE.match(trading_pair)
         return m.group(1), m.group(2)
+
     except Exception as e:
         raise e
 

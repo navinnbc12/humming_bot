@@ -25,9 +25,9 @@ from hummingbot.connector.derivative.exchangeforest_perpetual.constants import (
 )
 
 # API OrderBook Endpoints
-SNAPSHOT_REST_URL = "{}/api/depth"
-TICKER_PRICE_URL = "{}/api/bookTicker"
-TICKER_PRICE_CHANGE_URL = '{}/api/NodeGetTickerPrice'
+SNAPSHOT_REST_URL = "{}/api/Depth"
+TICKER_PRICE_URL = "{}/api/ticker/bookTicker"
+TICKER_PRICE_CHANGE_URL = '{}/api/ticker/24hr'
 EXCHANGE_INFO_URL = "{}/api/exchangeInfo"
 RECENT_TRADES_URL = "{}/api/trades"
 
