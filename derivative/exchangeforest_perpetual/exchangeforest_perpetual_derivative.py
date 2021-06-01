@@ -121,7 +121,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
 
         self._base_url = PERPETUAL_BASE_URL if self._testnet is False else TESTNET_BASE_URL
         self._stream_url = DIFF_STREAM_URL if self._testnet is False else TESTNET_STREAM_URL
-        self._user_stream_tracker = ExchangeforestPerpetualUserStreamTracker(base_url=self._base_url, stream_url=self._stream_url, api_key=self._api_key)
+        self._user_stream_tracker = ExchangeforestPerpetualUserStreamTracker(base_url=self._base_url, stream_url=self._stream_url, api_key=self._api_key,secret_key=self._api_secret)
         self._order_book_tracker = ExchangeforestPerpetualOrderBookTracker(trading_pairs=trading_pairs, **domain)
         self._ev_loop = asyncio.get_event_loop()
         self._poll_notifier = asyncio.Event()
@@ -176,17 +176,16 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
 
     async def start_network(self):
         self._order_book_tracker.start()
-        logging.info('done order_tracker')
         self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
-        logging.info('done2')
         self._funding_info_polling_task = safe_ensure_future(self._funding_info_polling_loop())
-        logging.info('done 3')
-        a = self._trading_required
-        logging.info('last %s'%a)
         if self._trading_required:
             self._status_polling_task = safe_ensure_future(self._status_polling_loop())
             self._user_stream_tracker_task = safe_ensure_future(self._user_stream_tracker.start())
             self._user_stream_event_listener_task = safe_ensure_future(self._user_stream_event_listener())
+            logging.info('start_success')
+        else:
+            logging.info('start_failed')
+
 
     def _stop_network(self):
         logging.info('stop network')
@@ -261,7 +260,14 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
             else:
                 api_params["positionSide"] = "SHORT" if trade_type is TradeType.BUY else "LONG"
 
-        self.start_tracking_order(order_id, "", trading_pair, trade_type, price, amount, order_type, self._leverage[trading_pair], position_action.name)
+        try:
+            self.start_tracking_order(order_id, "", trading_pair, trade_type, price, amount, order_type,
+                                      self._leverage[trading_pair], position_action.name)
+
+        except KeyError:
+            self._leverage[trading_pair] = 1
+            self.start_tracking_order(order_id, "", trading_pair, trade_type, price, amount, order_type,
+                                      self._leverage[trading_pair], position_action.name)
 
         try:
             order_result = await self.request(path="/api/order",
@@ -269,8 +275,11 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                                               method=MethodType.POST,
                                               add_timestamp = True,
                                               is_signed=True)
-            logging.info('%s'%order_result)
+            logging.info('response of create_order %s'%order_result)
             exchange_order_id = str(order_result["orderId"])
+            global _exchange_order_id
+            _exchange_order_id = order_result["orderId"]
+            #_side = order_result["side"]
             tracked_order = self._in_flight_orders.get(order_id)
             if tracked_order is not None:
                 self.logger().info(f"Created {order_type.name.lower()} {trade_type.name.lower()} order {order_id} for "
@@ -339,19 +348,26 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
 
     async def cancel_all(self, timeout_seconds: float):
         incomplete_orders = [order for order in self._in_flight_orders.values() if not order.is_done]
-        tasks = [self.execute_cancel(order.trading_pair, order.client_order_id) for order in incomplete_orders]
-        order_id_set = set([order.client_order_id for order in incomplete_orders])
+        logging.info('from canecl all')
+        logging.info('incom %s'%incomplete_orders)
+        tasks = [self.execute_cancel(order.trading_pair, order.exchange_order_id) for order in incomplete_orders]
+        #logging.info('tasks %s' %tasks)
+        order_id_set = set([order.exchange_order_id for order in incomplete_orders])
         successful_cancellations = []
 
         try:
             async with timeout(timeout_seconds):
                 cancellation_results = await safe_gather(*tasks, return_exceptions=True)
                 for cancel_result in cancellation_results:
+                    logging.info("cancel_result %s" %cancel_result)
                     # TODO: QUESTION --- SHOULD I CHECK FOR THE ExchangeforestAPIException CONSIDERING WE ARE MOVING AWAY FROM EXCHANGEFOREST-CLIENT?
-                    if isinstance(cancel_result, dict) and "clientOrderId" in cancel_result:
-                        client_order_id = cancel_result.get("clientOrderId")
-                        order_id_set.remove(client_order_id)
-                        successful_cancellations.append(CancellationResult(client_order_id, True))
+                    if isinstance(cancel_result, dict) and "orderId" in cancel_result:
+                        logging.info('inside if is instance')
+                        exchange_order_id = cancel_result.get("orderId")
+                        logging.info("ois%s" %order_id_set)
+                        order_id_set.remove(str(exchange_order_id))
+                        logging.info("ois%s" % order_id_set)
+                        successful_cancellations.append(CancellationResult(exchange_order_id, True))
         except Exception:
             self.logger().network(
                 "Unexpected error cancelling orders.",
@@ -366,12 +382,9 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
             params = {
                 "symbol": trading_pair
             }
-            headers = {"secret": self._api_secret, "key": self._api_key,
-                       "Content-type": "application/json"}
             response = await self.request(
                 path="/api/allOpenOrders",
                 params=params,
-                headers=headers,
                 method=MethodType.DELETE,
                 add_timestamp=True,
                 is_signed=True
@@ -386,45 +399,47 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
             self.logger().error("Could not cancel all account orders.")
             raise e
 
-    def cancel(self, trading_pair: str, client_order_id: str):
-        safe_ensure_future(self.execute_cancel(trading_pair, client_order_id))
-        return client_order_id
+    def cancel(self, trading_pair: str, exchange_order_id: str):
+        logging.info('from cancel')
+        safe_ensure_future(self.execute_cancel(trading_pair, _exchange_order_id))
+        return _exchange_order_id
 
-    async def execute_cancel(self, trading_pair: str, client_order_id: str):
+    async def execute_cancel(self, trading_pair: str, exchange_order_id: str):
         try:
+            logging.info('inside execute cancel')
             params = {
-                "origClientOrderId": client_order_id,
-                "symbol": convert_to_exchange_trading_pair(trading_pair)
+                "orderId": exchange_order_id,
+                "symbol": convert_to_exchange_trading_pair(trading_pair),
             }
-            headers = {"secret": self._api_secret, "key": self._api_key,
-                       "Content-type": "application/json"}
+            logging.info('params %s' % params)
+            #headers = {"secret": self._api_secret, "key": self._api_key,
+            #          "Content-type": "application/json"}
             response = await self.request(
                 path="/api/order",
                 params=params,
-                headers = headers,
                 method=MethodType.DELETE,
                 is_signed=True,
                 add_timestamp = True,
                 return_err=True
             )
-            logging.info('inside execute cancel %s'%response)
+            logging.info('response execute cancel %s'%response)
             if response.get("code") == -2011 or "Unknown order sent" in response.get("msg", ""):
-                self.logger().debug(f"The order {client_order_id} does not exist on Exchangeforest Perpetuals. "
+                self.logger().debug(f"The order {exchange_order_id} does not exist on Exchangeforest Perpetuals. "
                                     f"No cancellation needed.")
-                self.stop_tracking_order(client_order_id)
+                self.stop_tracking_order(exchange_order_id)
                 self.trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
-                                   OrderCancelledEvent(self.current_timestamp, client_order_id))
+                                   OrderCancelledEvent(self.current_timestamp, exchange_order_id))
                 return {
-                    "origClientOrderId": client_order_id
+                    "origClientOrderId": exchange_order_id
                 }
         except Exception as e:
-            self.logger().error(f"Could not cancel order {client_order_id} (on Exchangeforest Perp. {trading_pair})")
+            self.logger().error(f"Could not cancel order {exchange_order_id} (on Exchangeforest Perp. {trading_pair})")
             raise e
         if response.get("status", None) == "CANCELED":
-            self.logger().info(f"Successfully canceled order {client_order_id}")
-            self.stop_tracking_order(client_order_id)
+            self.logger().info(f"Successfully canceled order {exchange_order_id}")
+            self.stop_tracking_order(exchange_order_id)
             self.trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
-                               OrderCancelledEvent(self.current_timestamp, client_order_id))
+                               OrderCancelledEvent(self.current_timestamp, exchange_order_id))
         return response
 
     def quantize_order_amount(self, trading_pair: str, amount: object, price: object = Decimal(0)):
@@ -674,11 +689,6 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                     step_size = Decimal(filt_dict.get("LOT_SIZE").get("stepSize"))
                     tick_size = Decimal(filt_dict.get("PRICE_FILTER").get("tickSize"))
 
-                    logging.info('1111 %s'%trading_pair)
-                    logging.info('1111 %s'%min_order_size)
-                    logging.info('1111 %s'%step_size)
-                    logging.info('1111 %s'%tick_size)
-
                     # TODO: EXCHANGEFOREST PERPETUALS DOES NOT HAVE A MIN NOTIONAL VALUE, NEED TO CREATE NEW DERIVATIVES INFRASTRUCTURE
                     # min_notional = 0
 
@@ -813,9 +823,12 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
         last_tick = int(self._last_poll_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         current_tick = int(self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         if current_tick > last_tick and len(self._in_flight_orders) > 0:
+            logging.info('inside if of ## ')
             trading_pairs_to_order_map = defaultdict(lambda: {})
             for order in self._in_flight_orders.values():
+                logging.info('inside ## %s'%order)
                 trading_pairs_to_order_map[order.trading_pair][order.exchange_order_id] = order
+
             trading_pairs = list(trading_pairs_to_order_map.keys())
             tasks = [
                 self.request(
@@ -826,9 +839,9 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                     is_signed=True,
                     add_timestamp=True
                 ) for trading_pair in trading_pairs]
-            logging.info('_update_order_fills_from_trades: %s' %tasks)
             self.logger().debug(f"Polling for order fills of {len(tasks)} trading_pairs.")
             results = await safe_gather(*tasks, return_exceptions=True)
+            logging.info(f"results %s"%results)
             for trades, trading_pair in zip(results, trading_pairs):
                 order_map = trading_pairs_to_order_map.get(trading_pair)
                 if isinstance(trades, Exception):
@@ -837,37 +850,42 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                         app_warning_msg=f"Failed to fetch trade update for {trading_pair}."
                     )
                     continue
-                for trade in trades:
-                    order_id = str(trade.get("orderId"))
-                    if order_id in order_map:
-                        tracked_order = order_map.get(order_id)
-                        order_type = tracked_order.order_type
-                        applied_trade = tracked_order.update_with_trade_updates(trade)
-                        if applied_trade:
-                            self.trigger_event(
-                                self.MARKET_ORDER_FILLED_EVENT_TAG,
-                                OrderFilledEvent(
-                                    self.current_timestamp,
-                                    tracked_order.client_order_id,
-                                    tracked_order.trading_pair,
-                                    tracked_order.trade_type,
-                                    order_type,
-                                    Decimal(trade.get("price")),
-                                    Decimal(trade.get("qty")),
-                                    self.get_fee(
-                                        tracked_order.base_asset,
-                                        tracked_order.quote_asset,
-                                        order_type,
+                try:
+                    for trade in trades:
+                        order_id = str(trade.get("orderId"))
+                        if order_id in order_map:
+                            tracked_order = order_map.get(order_id)
+                            order_type = tracked_order.order_type
+                            applied_trade = tracked_order.update_with_trade_updates(trade)
+                            if applied_trade:
+                                self.trigger_event(
+                                    self.MARKET_ORDER_FILLED_EVENT_TAG,
+                                    OrderFilledEvent(
+                                        self.current_timestamp,
+                                        tracked_order.client_order_id,
+                                        tracked_order.trading_pair,
                                         tracked_order.trade_type,
-                                        Decimal(trade["price"]),
-                                        Decimal(trade["qty"])),
-                                    exchange_trade_id=trade["id"],
-                                    leverage=self._leverage[tracked_order.trading_pair],
-                                    position=tracked_order.position
-                                )
+                                        order_type,
+                                        Decimal(trade.get("price")),
+                                        Decimal(trade.get("qty")),
+                                        self.get_fee(
+                                            tracked_order.base_asset,
+                                            tracked_order.quote_asset,
+                                            order_type,
+                                            tracked_order.trade_type,
+                                            Decimal(trade["price"]),
+                                            Decimal(trade["qty"])),
+                                        exchange_trade_id=trade["id"],
+                                        leverage=self._leverage[tracked_order.trading_pair],
+                                        position=tracked_order.position
+                                    )
                             )
 
+                except Exception as e:
+                    logging.info('%s'%e)
+
     async def _update_order_status(self):
+        logging.info('inside _update_order_status')
         last_tick = int(self._last_poll_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         current_tick = int(self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         if current_tick > last_tick and len(self._in_flight_orders) > 0:
@@ -875,14 +893,14 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
             tasks = [self.request(path="/api/order",
                                   params={
                                       "symbol": convert_to_exchange_trading_pair(order.trading_pair),
-                                      "origClientOrderId": order.client_order_id
+                                      "orderId": order.exchange_order_id
                                   },
                                   method=MethodType.GET,
                                   add_timestamp=True,
                                   is_signed=True,
                                   return_err=True)
                      for order in tracked_orders]
-            logging.info('_update_order_status: %s' %tasks)
+            #logging.info('_update_order_status: %s' %tasks)
             self.logger().debug(f"Polling for order status updates of {len(tasks)} orders.")
             results = await safe_gather(*tasks, return_exceptions=True)
             for order_update, tracked_order in zip(results, tracked_orders):
@@ -948,6 +966,8 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                                                                        client_order_id,
                                                                        order_type))
                     self.stop_tracking_order(client_order_id)
+        else:
+            logging.info('condition failed')
 
     async def _set_leverage(self, trading_pair: str, leverage: int = 1):
 

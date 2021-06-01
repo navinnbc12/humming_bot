@@ -21,9 +21,10 @@ class ExchangeforestPerpetualUserStreamTracker(UserStreamTracker):
             cls._bust_logger = logging.getLogger(__name__)
         return cls._bust_logger
 
-    def __init__(self, base_url: str, stream_url: str, api_key: str):
+    def __init__(self, base_url: str, stream_url: str, api_key: str,secret_key:str):
         super().__init__()
         self._api_key: str = api_key
+        self._api_secret:str = secret_key  #
         self._base_url = base_url
         self._stream_url = stream_url
         self._ev_loop: asyncio.events.AbstractEventLoop = asyncio.get_event_loop()
@@ -37,7 +38,7 @@ class ExchangeforestPerpetualUserStreamTracker(UserStreamTracker):
     @property
     def data_source(self) -> UserStreamTrackerDataSource:
         if self._data_source is None:
-            self._data_source = ExchangeforestPerpetualUserStreamDataSource(base_url=self._base_url, stream_url=self._stream_url, api_key=self._api_key)
+            self._data_source = ExchangeforestPerpetualUserStreamDataSource(base_url=self._base_url, stream_url=self._stream_url, api_key=self._api_key,secret_key=self._api_secret)
         return self._data_source
 
     async def start(self):

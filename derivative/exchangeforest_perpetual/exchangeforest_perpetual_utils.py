@@ -9,14 +9,15 @@ CENTRALIZED = True
 
 
 #EXAMPLE_PAIR = "BTC-USDT"
-EXAMPLE_PAIR = "BTC-FC"
+EXAMPLE_PAIR = "FC-BTC"
 
 
 
 DEFAULT_FEES = [0.02, 0.04]
 
-RE_4_LETTERS_QUOTE = re.compile(r"^(\w+)(USDT|USDC|USDS|TUSD|BUSD|IDRT|BKRW|BIDR)$")
-RE_3_LETTERS_QUOTE = re.compile(r"^(\w+)(BTC|ETH|BNB|DAI|XRP|PAX|TRX|NGN|RUB|TRY|EUR|ZAR|UAH|GBP|USD|BRL|FC)$")
+RE_4_LETTERS_QUOTE = re.compile(r"^(\w+)(USDT|USDC|USDS|TUSD|BUSD|IDRT|BKRW|BIDR|FC)$")
+RE_3_LETTERS_QUOTE = re.compile(r"^(\w+)(BTC|ETH|BNB|DAI|XRP|PAX|TRX|NGN|RUB|TRY|EUR|ZAR|UAH|GBP|USD|BRL|BCH)$")
+
 
 
 # Helper Functions ---
@@ -61,7 +62,7 @@ KEYS = {
 OTHER_DOMAINS = ["exchangeforest_perpetual_testnet"]
 OTHER_DOMAINS_PARAMETER = {"exchangeforest_perpetual_testnet": "exchangeforest_perpetual_testnet"}
 #OTHER_DOMAINS_EXAMPLE_PAIR = {"exchangeforest_perpetual_testnet": "BTC-USDT"}
-OTHER_DOMAINS_EXAMPLE_PAIR = {"exchangeforest_perpetual_testnet": "BTC-FC"}
+OTHER_DOMAINS_EXAMPLE_PAIR = {"exchangeforest_perpetual_testnet": "FC-BTC"}
 OTHER_DOMAINS_DEFAULT_FEES = {"exchangeforest_perpetual_testnet": [0.02, 0.04]}
 #import pdb;pdb.set_trace()
 OTHER_DOMAINS_KEYS = {"exchangeforest_perpetual_testnet": {

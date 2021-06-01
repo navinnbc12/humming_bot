@@ -27,9 +27,12 @@ class ExchangeforestPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
     def last_recv_time(self) -> float:
         return self._last_recv_time
 
-    def __init__(self, base_url: str, stream_url: str, api_key: str):
+    def __init__(self, base_url: str, stream_url: str, api_key: str,secret_key:str):
         super().__init__()
-        #self._api_key: str = api_key
+        self._api_key: str = api_key
+        self.secret:str = secret_key
+        logging.info("%s apikey"%api_key)
+        logging.info("%s secretkey" % secret_key)
         self._current_listen_key = None
         self._listen_for_user_stream_task = None
         self._last_recv_time: float = 0
@@ -38,8 +41,8 @@ class ExchangeforestPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
 
         self._wss_stream_url = stream_url + "/ws/"
 
-        self.api_key = '013ec3ae-5485-4967-9d03-6e9eb10e0f95'
-        self.secret = '6339fc64-4b31-4ccf-9468-f6704ed9abd9'
+        #self.api_key = '013ec3ae-5485-4967-9d03-6e9eb10e0f95'
+        #self.secret = '6339fc64-4b31-4ccf-9468-f6704ed9abd9'
 
     async def get_listen_key(self):
         async with aiohttp.ClientSession() as client:
@@ -47,7 +50,7 @@ class ExchangeforestPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
             logging.info('inside listenkey')
             async with client.post (self._http_stream_url,
                                    headers={"secret": self.secret,
-                                            "key": self.api_key,"Content-type" :"application/json"}) as response:
+                                            "key": self._api_key,"Content-type" :"application/json"}) as response:
                 response: aiohttp.ClientResponse = response
                 if response.status != 200:
                     logging.info('get_listenkey: erroro' )

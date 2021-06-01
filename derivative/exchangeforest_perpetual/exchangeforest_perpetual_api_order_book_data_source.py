@@ -91,7 +91,6 @@ class ExchangeforestPerpetualAPIOrderBookDataSource(OrderBookTrackerDataSource):
             BASE_URL = TESTNET_BASE_URL if domain == "exchangeforest_perpetual_testnet" else PERPETUAL_BASE_URL
             async with aiohttp.ClientSession() as client:
                 async with client.get(EXCHANGE_INFO_URL.format(BASE_URL), timeout=10) as response:
-                    logging.info('fetching_trading_price %s' %response)
                     if response.status == 200:
                         data = await response.json()
                         raw_trading_pairs = [d["symbol"] for d in data["symbols"] if d["status"] == "TRADING"]
