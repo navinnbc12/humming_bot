@@ -339,6 +339,7 @@ class BinancePerpetualDerivative(DerivativeBase):
 
     async def cancel_all(self, timeout_seconds: float):
         incomplete_orders = [order for order in self._in_flight_orders.values() if not order.is_done]
+        logging.info('incom %s' % incomplete_orders)
         tasks = [self.execute_cancel(order.trading_pair, order.client_order_id) for order in incomplete_orders]
         order_id_set = set([order.client_order_id for order in incomplete_orders])
         successful_cancellations = []
@@ -446,6 +447,7 @@ class BinancePerpetualDerivative(DerivativeBase):
 
     def get_order_price_quantum(self, trading_pair: str, price: object):
         trading_rule: TradingRule = self._trading_rules[trading_pair]
+        #logging.info('aaaaa %s'%trading_rule)
         return trading_rule.min_price_increment
 
     def get_order_size_quantum(self, trading_pair: str, order_size: object):
@@ -469,8 +471,10 @@ class BinancePerpetualDerivative(DerivativeBase):
         #logging.info(' %s:' % self._in_flight_orders[order_id])
 
     def stop_tracking_order(self, order_id: str):
+        logging.info("self_orders %s" % self._in_flight_orders)
         if order_id in self._in_flight_orders:
             del self._in_flight_orders[order_id]
+            logging.info("self_orders %s" % self._in_flight_orders)
         if order_id in self._order_not_found_records:
             del self._order_not_found_records[order_id]
 
@@ -635,6 +639,7 @@ class BinancePerpetualDerivative(DerivativeBase):
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
         order_books: dict = self._order_book_tracker.order_books
+        #logging.info('order_books %s'%order_books)
         if trading_pair not in order_books:
             raise ValueError(f"No order book exists for '{trading_pair}'.")
         return order_books[trading_pair]
@@ -794,7 +799,12 @@ class BinancePerpetualDerivative(DerivativeBase):
         logging.info(' inside _update_order_fills_from_trades:')
         last_tick = int(self._last_poll_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         current_tick = int(self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
+        logging.info("last_tick %s" % last_tick)
+        logging.info("current_tick %s" % current_tick)
+        a = len(self._in_flight_orders)
+        logging.info('len %s' % a)
         if current_tick > last_tick and len(self._in_flight_orders) > 0:
+            logging.info('inside if')
             trading_pairs_to_order_map = defaultdict(lambda: {})
             for order in self._in_flight_orders.values():
                 trading_pairs_to_order_map[order.trading_pair][order.exchange_order_id] = order
@@ -851,11 +861,12 @@ class BinancePerpetualDerivative(DerivativeBase):
                             )
 
     async def _update_order_status(self):
+        logging.info(' inside _update_order_status')
         last_tick = int(self._last_poll_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         current_tick = int(self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         if current_tick > last_tick and len(self._in_flight_orders) > 0:
             tracked_orders = list(self._in_flight_orders.values())
-            logging.info(' inside _update_order_status')
+            logging.info("Tracked order %s" % tracked_orders)
             tasks = [self.request(path="/fapi/v1/order",
                                   params={
                                       "symbol": convert_to_exchange_trading_pair(order.trading_pair),
@@ -870,6 +881,8 @@ class BinancePerpetualDerivative(DerivativeBase):
             results = await safe_gather(*tasks, return_exceptions=True)
             logging.info('_update_order_status: %s' %results)
             for order_update, tracked_order in zip(results, tracked_orders):
+                logging.info("order_update %s" % order_update)
+                logging.info("tracked_order %s" % tracked_order)
                 client_order_id = tracked_order.client_order_id
                 if client_order_id not in self._in_flight_orders:
                     continue
@@ -932,7 +945,8 @@ class BinancePerpetualDerivative(DerivativeBase):
                                                                        client_order_id,
                                                                        order_type))
                     self.stop_tracking_order(client_order_id)
-
+        else:
+            logging.info('con failed')
     async def _set_leverage(self, trading_pair: str, leverage: int = 1):
         params = {
             "symbol": convert_to_exchange_trading_pair(trading_pair),
@@ -1038,7 +1052,7 @@ class BinancePerpetualDerivative(DerivativeBase):
                 if add_timestamp:
                     params["timestamp"] = f"{int(time.time()) * 1000}"
                     params["recvWindow"] = f"{20000}"
-                logging.info('%s'%type(params))
+                #logging.info('%s'%type(params))
                 query = urlencode(sorted(params.items()))
                 if is_signed:
                     secret = bytes(self._api_secret.encode("utf-8"))

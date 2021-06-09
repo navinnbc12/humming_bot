@@ -65,6 +65,9 @@ class MethodType(Enum):
     DELETE = "DELETE"
     PUT = "PUT"
 
+global _exchange_order_id
+
+_exchange_order_id =[]
 
 bpm_logger = None
 
@@ -232,13 +235,13 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                            position_action: PositionAction,
                            price: Optional[Decimal] = Decimal("NaN")):
 
+
         trading_rule: TradingRule = self._trading_rules[trading_pair]
         if position_action not in [PositionAction.OPEN, PositionAction.CLOSE]:
             raise ValueError("Specify either OPEN_POSITION or CLOSE_POSITION position_action.")
 
         amount = self.quantize_order_amount(trading_pair, amount)
         price = self.quantize_order_price(trading_pair, price)
-
         if amount < trading_rule.min_order_size:
             raise ValueError(f"Buy order amount {amount} is lower than the minimum order size "
                              f"{trading_rule.min_order_size}")
@@ -277,10 +280,10 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                                               is_signed=True)
             logging.info('response of create_order %s'%order_result)
             exchange_order_id = str(order_result["orderId"])
-            global _exchange_order_id
-            _exchange_order_id = order_result["orderId"]
-            #_side = order_result["side"]
+            _exchange_order_id.append(exchange_order_id)
+            logging.info("_exchange_order_id %s " %_exchange_order_id)
             tracked_order = self._in_flight_orders.get(order_id)
+
             if tracked_order is not None:
                 self.logger().info(f"Created {order_type.name.lower()} {trade_type.name.lower()} order {order_id} for "
                                    f"{amount} {trading_pair}.")
@@ -399,12 +402,15 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
             self.logger().error("Could not cancel all account orders.")
             raise e
 
-    def cancel(self, trading_pair: str, exchange_order_id: str):
-        logging.info('from cancel')
-        safe_ensure_future(self.execute_cancel(trading_pair, _exchange_order_id))
-        return _exchange_order_id
+    def cancel(self, trading_pair: str, client_order_id: str):
+        logging.info('from cancel and inflight %s'%self._in_flight_orders)
+        logging.info("client_order %s "%client_order_id)
+        safe_ensure_future(self.execute_cancel(trading_pair, _exchange_order_id[0]))
+        id = _exchange_order_id[0]
+        _exchange_order_id.pop(0)
+        return client_order_id
 
-    async def execute_cancel(self, trading_pair: str, exchange_order_id: str):
+    async def execute_cancel(self, trading_pair: str, exchange_order_id:str):
         try:
             logging.info('inside execute cancel')
             params = {
@@ -478,7 +484,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
     def start_tracking_order(self, order_id: str, exchange_order_id: str, trading_pair: str, trading_type: object,
                              price: object, amount: object, order_type: object, leverage: int, position: str):
         self._in_flight_orders[order_id] = ExchangeforestPerpetualsInFlightOrder(
-            client_order_id=order_id,
+            client_order_id=exchange_order_id,
             exchange_order_id=exchange_order_id,
             trading_pair=trading_pair,
             order_type=order_type,
@@ -491,8 +497,35 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
         )
 
     def stop_tracking_order(self, order_id: str):
-        if order_id in self._in_flight_orders:
-            del self._in_flight_orders[order_id]
+        logging.info("stop_tracking_order")
+        logging.info("ifo %s " %self._in_flight_orders)
+        dummy = self._in_flight_orders
+        values = list(dummy.values())
+        keys = list(dummy.keys())
+        logging.info("values %s"%values)
+        logging.info("keys %s" % keys)
+        try:
+            if order_id in str(values[0]):
+                del self._in_flight_orders[keys[0]]
+            elif order_id in str(values[1]):
+                del self._in_flight_orders[keys[1]]
+        except Exception as e:
+            return e
+        #for k, v in dummy:
+        #    if order_id in v.exchange_order_id:
+        #        del self._in_flight_orders[k]
+            #logging.info('order_id %s' % order_id)
+            #if order_id in v.exchange_order_id:
+            #    del self._in_flight_orders[k]
+            #    logging.info('success')
+        #    else:
+        #        logging.info('an error occured')
+        #if order_id in self._in_flight_orders.values():
+        #    logging.info('inside if %s'%order_id)
+        #    del self._in_flight_orders[order_id]
+        logging.info("self_orders %s" % self._in_flight_orders)
+        check_two = self._order_not_found_records
+        logging.info("check_two: %s" % check_two)
         if order_id in self._order_not_found_records:
             del self._order_not_found_records[order_id]
 
@@ -862,7 +895,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                                     self.MARKET_ORDER_FILLED_EVENT_TAG,
                                     OrderFilledEvent(
                                         self.current_timestamp,
-                                        tracked_order.client_order_id,
+                                        tracked_order.order_id,
                                         tracked_order.trading_pair,
                                         tracked_order.trade_type,
                                         order_type,
@@ -890,6 +923,7 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
         current_tick = int(self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL)
         if current_tick > last_tick and len(self._in_flight_orders) > 0:
             tracked_orders = list(self._in_flight_orders.values())
+            logging.info("Tracked order %s" %tracked_orders)
             tasks = [self.request(path="/api/order",
                                   params={
                                       "symbol": convert_to_exchange_trading_pair(order.trading_pair),
@@ -900,27 +934,35 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                                   is_signed=True,
                                   return_err=True)
                      for order in tracked_orders]
-            #logging.info('_update_order_status: %s' %tasks)
             self.logger().debug(f"Polling for order status updates of {len(tasks)} orders.")
             results = await safe_gather(*tasks, return_exceptions=True)
+            logging.info(f"results of update %s"%results)
             for order_update, tracked_order in zip(results, tracked_orders):
-                client_order_id = tracked_order.client_order_id
-                if client_order_id not in self._in_flight_orders:
+                logging.info("order_update %s"%order_update)
+                logging.info("tracked_order %s"%tracked_order)
+                exchange_order_id = tracked_order.exchange_order_id
+                logging.info("exchange_order_id %s" %exchange_order_id)
+                logging.info("self_in_flight_orders %s" % self._in_flight_orders)
+                check = str(self._in_flight_orders.values())
+                if exchange_order_id not in check:
+                    logging.info("inside first if")
                     continue
                 if isinstance(order_update, Exception):
+                    logging.info("inside second if")
                     # NO_SUCH_ORDER code
                     if order_update["code"] == -2013 or order_update["msg"] == "Order does not exist.":
-                        self._order_not_found_records[client_order_id] = \
-                            self._order_not_found_records.get(client_order_id, 0) + 1
-                        if self._order_not_found_records[client_order_id] < self.ORDER_NOT_EXIST_CONFIRMATION_COUNT:
+                        logging.info("inside second if of if")
+                        self._order_not_found_records[exchange_order_id] = \
+                            self._order_not_found_records.get(exchange_order_id, 0) + 1
+                        if self._order_not_found_records[exchange_order_id] < self.ORDER_NOT_EXIST_CONFIRMATION_COUNT:
                             continue
                         self.trigger_event(
                             self.MARKET_ORDER_FAILURE_EVENT_TAG,
-                            MarketOrderFailureEvent(self.current_timestamp, client_order_id, tracked_order.order_type)
+                            MarketOrderFailureEvent(self.current_timestamp, exchange_order_id, tracked_order.order_type)
                         )
-                        self.stop_tracking_order(client_order_id)
+                        self.stop_tracking_order(exchange_order_id)
                     else:
-                        self.logger().network(f"Error fetching status update for the order {client_order_id}: "
+                        self.logger().network(f"Error fetching status update for the order {exchange_order_id}: "
                                               f"{order_update}.")
                     continue
 
@@ -929,7 +971,9 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
                 executed_amount_base = Decimal(order_update.get("executedQty", "0"))
                 executed_amount_quote = Decimal(order_update.get("cumQuote", "0"))
 
+                logging.info('before inside done')
                 if tracked_order.is_done:
+                    logging.info("inside done")
                     if not tracked_order.is_failure:
                         event_tag = None
                         event_class = None
@@ -940,32 +984,43 @@ class ExchangeforestPerpetualDerivative(DerivativeBase):
 
                             event_tag = self.MARKET_SELL_ORDER_COMPLETED_EVENT_TAG
                             event_class = SellOrderCompletedEvent
-                        self.logger().info(f"The {order_type.name.lower()} {tracked_order.trade_type.name.lower()} order {client_order_id} has "
+                        self.logger().info(f"The {order_type.name.lower()} {tracked_order.trade_type.name.lower()} order {exchange_order_id} has "
                                            f"completed according to order status API.")
-                        self.trigger_event(event_tag,
-                                           event_class(self.current_timestamp,
-                                                       client_order_id,
-                                                       tracked_order.base_asset,
-                                                       tracked_order.quote_asset,
-                                                       (tracked_order.fee_asset or tracked_order.base_asset),
-                                                       executed_amount_base,
-                                                       executed_amount_quote,
-                                                       tracked_order.fee_paid,
-                                                       order_type))
+                        try:
+                            logging.info('inside try of done')
+                            self.trigger_event(event_tag,
+                                            event_class(self.current_timestamp,
+                                                           exchange_order_id,
+                                                           tracked_order.base_asset,
+                                                           tracked_order.quote_asset,
+                                                           (tracked_order.fee_asset or tracked_order.base_asset),
+                                                           executed_amount_base,
+                                                           executed_amount_quote,
+                                                           tracked_order.fee_paid,
+                                                           order_type))
+                        except Exception as e:
+                            logging.info('inside except of done')
+                            logging.info(f"{e}")
+                        self.stop_tracking_order(exchange_order_id)
+
+
                     else:
+                        logging.info("inside cancel")
                         if tracked_order.is_cancelled:
-                            self.logger().info(f"Successfully cancelled order {client_order_id} according to order status API.")
+                            self.logger().info(f"Successfully cancelled order {exchange_order_id} according to order status API.")
                             self.trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                                OrderCancelledEvent(self.current_timestamp,
-                                                                   client_order_id))
+                                                                   exchange_order_id))
                         else:
-                            self.logger().info(f"The {order_type.name.lower()} order {client_order_id} has failed according to "
+                            self.logger().info(f"The {order_type.name.lower()} order {exchange_order_id} has failed according to "
                                                f"order status API.")
                             self.trigger_event(self.MARKET_ORDER_FAILURE_EVENT_TAG,
                                                MarketOrderFailureEvent(self.current_timestamp,
-                                                                       client_order_id,
+                                                                       exchange_order_id,
                                                                        order_type))
-                    self.stop_tracking_order(client_order_id)
+                    self.stop_tracking_order(exchange_order_id)
+                else:
+                    logging.info('faileddd')
         else:
             logging.info('condition failed')
 

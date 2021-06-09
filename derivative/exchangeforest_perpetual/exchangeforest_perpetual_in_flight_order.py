@@ -33,7 +33,9 @@ class ExchangeforestPerpetualsInFlightOrder(InFlightOrderBase):
 
     @property
     def is_done(self):
-        return self.last_state in {"FILLED", "CANCELED", "PENDING_CANCEL", "REJECTED", "EXPIRED"}
+        import logging
+        logging.info('self.last_state %s'%self.last_state)
+        return self.last_state in {"Filled", "CANCELED", "PENDING_CANCEL", "REJECTED", "EXPIRED"}
 
     @property
     def is_cancelled(self):
@@ -41,7 +43,7 @@ class ExchangeforestPerpetualsInFlightOrder(InFlightOrderBase):
 
     @property
     def is_failure(self):
-        return self.last_state in {"CANCELED", "PENDING_CANCEL", "REJECTED", "EXPIRED"}
+        return self.last_state in {"CANCELED", "PENDING_CANCEL", "REJECTED", "Expired"}
 
     @classmethod
     def from_json(cls, data: Dict[str, Any]):

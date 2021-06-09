@@ -64,7 +64,7 @@ class ExchangeforestPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
     async def ping_listen_key(self, listen_key: str) -> bool:
         async with aiohttp.ClientSession() as client:
             async with client.put(self._http_stream_url,
-                                  headers={"secret": self.secret,"key":self.api_key,
+                                  headers={"secret": self.secret,"key":self._api_key,
                                            "Content-type" :"application/json"},
                                   params={"listenKey": listen_key}) as response:
                 data: [str, any] = await response.json()

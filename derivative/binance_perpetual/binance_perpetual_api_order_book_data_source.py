@@ -62,9 +62,7 @@ class BinancePerpetualAPIOrderBookDataSource(OrderBookTrackerDataSource):
             resp = await client.get(f"{TICKER_PRICE_CHANGE_URL.format(url)}?symbol={convert_to_exchange_trading_pair(trading_pair)}")
             resp_json = await resp.json()
             logging.info('get_last_traded_price %s' %resp_json)
-            print(float(resp_json["lastPrice"]))
             return float(resp_json["lastPrice"])
-            print(float(resp_json["lastPrice"]))
 
     """
     async def get_trading_pairs(self) -> List[str]:
