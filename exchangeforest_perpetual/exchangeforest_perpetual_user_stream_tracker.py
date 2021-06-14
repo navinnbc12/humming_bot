@@ -7,11 +7,11 @@ from hummingbot.core.data_type.user_stream_tracker_data_source import UserStream
 from hummingbot.core.utils.async_utils import safe_gather, safe_ensure_future
 from hummingbot.logger import HummingbotLogger
 
-from hummingbot.connector.derivative.binance_perpetual.binance_perpetual_user_stream_data_source import \
-    BinancePerpetualUserStreamDataSource
+from hummingbot.connector.derivative.exchangeforest_perpetual.exchangeforest_perpetual_user_stream_data_source import \
+    ExchangeforestPerpetualUserStreamDataSource
 
 
-class BinancePerpetualUserStreamTracker(UserStreamTracker):
+class ExchangeforestPerpetualUserStreamTracker(UserStreamTracker):
 
     _bpust_logger: Optional[HummingbotLogger] = None
 
@@ -21,9 +21,10 @@ class BinancePerpetualUserStreamTracker(UserStreamTracker):
             cls._bust_logger = logging.getLogger(__name__)
         return cls._bust_logger
 
-    def __init__(self, base_url: str, stream_url: str, api_key: str):
+    def __init__(self, base_url: str, stream_url: str, api_key: str,secret_key:str):
         super().__init__()
         self._api_key: str = api_key
+        self._api_secret:str = secret_key  #
         self._base_url = base_url
         self._stream_url = stream_url
         self._ev_loop: asyncio.events.AbstractEventLoop = asyncio.get_event_loop()
@@ -37,7 +38,7 @@ class BinancePerpetualUserStreamTracker(UserStreamTracker):
     @property
     def data_source(self) -> UserStreamTrackerDataSource:
         if self._data_source is None:
-            self._data_source = BinancePerpetualUserStreamDataSource(base_url=self._base_url, stream_url=self._stream_url, api_key=self._api_key)
+            self._data_source = ExchangeforestPerpetualUserStreamDataSource(base_url=self._base_url, stream_url=self._stream_url, api_key=self._api_key,secret_key=self._api_secret)
         return self._data_source
 
     async def start(self):

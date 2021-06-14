@@ -22,7 +22,7 @@ class ExchangeforestPerpetualOrderBookTracker(OrderBookTracker):
         return cls._bpobt_logger
 
     def __init__(self,
-                 trading_pairs: Optional[List[str]] = None, domain: str = "exchangeforest_perpetual"):
+                 trading_pairs: Optional[List[str]] = None, domain: str = "binance_perpetual"):
         super().__init__(data_source=ExchangeforestPerpetualAPIOrderBookDataSource(trading_pairs=trading_pairs, domain=domain),
                          trading_pairs=trading_pairs, domain=domain)
 

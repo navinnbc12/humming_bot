@@ -12,7 +12,7 @@ from hummingbot.core.data_type.user_stream_tracker_data_source import UserStream
 from hummingbot.core.utils.async_utils import safe_ensure_future
 from hummingbot.logger import HummingbotLogger
 
-EXCHANGEFOREST_USER_STREAM_ENDPOINT = "/api/ListenKey"
+EXCHANGEFOREST_USER_STREAM_ENDPOINT = "/fapi/v1/listenKey"
 
 class ExchangeforestPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
     _bpusds_logger: Optional[HummingbotLogger] = None
@@ -46,26 +46,20 @@ class ExchangeforestPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
 
     async def get_listen_key(self):
         async with aiohttp.ClientSession() as client:
-            #return 'Z0NWoaVA0bzDXGpR62GHG7juUBXEk9YQjxu47pVh8M9BU9N3tgyj27M0Xs6zD1ma'  #
-            logging.info('inside listenkey')
-            async with client.post (self._http_stream_url,
-                                   headers={"secret": self.secret,
-                                            "key": self._api_key,"Content-type" :"application/json"}) as response:
+            async with client.post(self._http_stream_url,
+                                   headers={"X-MBX-APIKEY": self._api_key}) as response:
                 response: aiohttp.ClientResponse = response
                 if response.status != 200:
-                    logging.info('get_listenkey: erroro' )
-
-                    raise IOError(f"Error fetching Exchangeforest Perpetual user stream listen key. "
+                    raise IOError(f"Error fetching Binance Perpetual user stream listen key. "
                                   f"HTTP status is {response.status}.")
                 data: Dict[str, str] = await response.json()
-                logging.info('get_listenkey: %s'%data)
+                logging.info('inside listen key %s' % data)
                 return data["listenKey"]
 
     async def ping_listen_key(self, listen_key: str) -> bool:
         async with aiohttp.ClientSession() as client:
             async with client.put(self._http_stream_url,
-                                  headers={"secret": self.secret,"key":self._api_key,
-                                           "Content-type" :"application/json"},
+                                  headers={"X-MBX-APIKEY": self._api_key},
                                   params={"listenKey": listen_key}) as response:
                 data: [str, any] = await response.json()
                 if "code" in data:

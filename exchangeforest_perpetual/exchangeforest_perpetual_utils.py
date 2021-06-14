@@ -8,8 +8,8 @@ from hummingbot.client.config.config_methods import using_exchange
 CENTRALIZED = True
 
 
-#EXAMPLE_PAIR = "BTC-USDT"
-EXAMPLE_PAIR = "FC-BTC"
+EXAMPLE_PAIR = "BTC-USDT"
+#EXAMPLE_PAIR = "FC-BTC"
 
 
 
@@ -62,7 +62,7 @@ KEYS = {
 OTHER_DOMAINS = ["exchangeforest_perpetual_testnet"]
 OTHER_DOMAINS_PARAMETER = {"exchangeforest_perpetual_testnet": "exchangeforest_perpetual_testnet"}
 #OTHER_DOMAINS_EXAMPLE_PAIR = {"exchangeforest_perpetual_testnet": "BTC-USDT"}
-OTHER_DOMAINS_EXAMPLE_PAIR = {"exchangeforest_perpetual_testnet": "FC-BTC"}
+OTHER_DOMAINS_EXAMPLE_PAIR = {"exchangeforest_perpetual_testnet": "BTC-USDT"}
 OTHER_DOMAINS_DEFAULT_FEES = {"exchangeforest_perpetual_testnet": [0.02, 0.04]}
 #import pdb;pdb.set_trace()
 OTHER_DOMAINS_KEYS = {"exchangeforest_perpetual_testnet": {
