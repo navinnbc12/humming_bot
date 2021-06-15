@@ -35,7 +35,7 @@ class ExchangeforestPerpetualsInFlightOrder(InFlightOrderBase):
     def is_done(self):
         import logging
         logging.info('self.last_state %s'%self.last_state)
-        return self.last_state in {"Filled", "CANCELED", "PENDING_CANCEL", "REJECTED", "EXPIRED"}
+        return self.last_state in {"Filled", "Partially-Filled", "CANCELED", "PENDING_CANCEL", "REJECTED", "EXPIRED"}
 
     @property
     def is_cancelled(self):
